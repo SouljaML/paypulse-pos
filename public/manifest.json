@@ -3,8 +3,8 @@
   "short_name": "PayPulse POS",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#12151f",
-  "theme_color": "#12151f",
+  "background_color": "#0E1B2C",
+  "theme_color": "#0E1B2C",
   "orientation": "portrait",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
