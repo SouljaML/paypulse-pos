@@ -30,6 +30,9 @@ function parseDetail(body: unknown, fallback: string): { message: string; code?:
 // can drop back to the enrolment screen.
 export const DEVICE_REJECTED_EVENT = 'paypulse:device-rejected'
 
+const DEVICE_REFUSALS = ['device_not_registered', 'device_suspended', 'device_unassigned']
+const isDeviceRefusal = (code?: string) => !!code && DEVICE_REFUSALS.includes(code)
+
 function deviceHeaders(): Record<string, string> {
   const t = getDeviceToken()
   return t ? { 'X-Device-Token': t } : {}
@@ -57,7 +60,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       // not JSON — fall back to statusText
     }
-    if (parsed.code === 'device_not_registered') window.dispatchEvent(new Event(DEVICE_REJECTED_EVENT))
+    if (isDeviceRefusal(parsed.code)) window.dispatchEvent(new Event(DEVICE_REJECTED_EVENT))
     throw new ApiError(res.status, parsed.message, parsed.code)
   }
 
@@ -81,7 +84,7 @@ export async function login(username: string, password: string): Promise<string>
     } catch {
       // ignore
     }
-    if (parsed.code === 'device_not_registered') window.dispatchEvent(new Event(DEVICE_REJECTED_EVENT))
+    if (isDeviceRefusal(parsed.code)) window.dispatchEvent(new Event(DEVICE_REJECTED_EVENT))
     throw new ApiError(res.status, parsed.message, parsed.code)
   }
   const data = await res.json()

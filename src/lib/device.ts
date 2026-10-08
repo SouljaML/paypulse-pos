@@ -24,8 +24,10 @@ export const enrollmentRequired = (): boolean => import.meta.env.VITE_REQUIRE_EN
 export interface DeviceInfo {
   device_id: string
   label: string
-  merchant_id: string
-  shop_id: string
+  merchant_id: string | null
+  shop_id: string | null
+  status?: 'active' | 'suspended' | string
+  assigned?: boolean
   shop_name: string | null
   till_id: string | null
   till_identifier: string | null

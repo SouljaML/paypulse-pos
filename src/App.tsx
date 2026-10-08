@@ -10,7 +10,13 @@ import { clearEnrollment, enrollmentRequired, getDeviceToken, saveDeviceInfo } f
 // 'checking' only lasts as long as one request: on start-up a stored
 // credential is verified, so a device revoked while it was off is turned away
 // before anyone types a password.
-type DeviceState = 'checking' | 'enrolled' | 'unenrolled'
+type DeviceState = 'checking' | 'enrolled' | 'unenrolled' | 'suspended' | 'unassigned'
+
+function stateFor(info: { status?: string; assigned?: boolean }): DeviceState {
+  if (info.status === 'suspended') return 'suspended'
+  if (info.assigned === false) return 'unassigned'
+  return 'enrolled'
+}
 
 export default function App() {
   const { decoded, logout } = useAuth()
@@ -22,8 +28,10 @@ export default function App() {
   useEffect(() => {
     if (deviceState !== 'checking') return
     getDeviceMe()
-      .then(({ device_token: _ignored, ...info }) => saveDeviceInfo(info))
-      .then(() => setDeviceState('enrolled'))
+      .then(async ({ device_token: _ignored, ...info }) => {
+        await saveDeviceInfo(info)
+        setDeviceState(stateFor(info))
+      })
       .catch(async (err) => {
         if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
           await clearEnrollment()
@@ -42,7 +50,12 @@ export default function App() {
     if (!enrollmentRequired()) return
     async function onRejected() {
       try {
-        await getDeviceMe()
+        const { device_token: _ignored, ...info } = await getDeviceMe()
+        // Suspended or not yet assigned: keep the credential, show why.
+        if (stateFor(info) !== 'enrolled') {
+          logout()
+          setDeviceState(stateFor(info))
+        }
       } catch (err) {
         if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
           await clearEnrollment()
@@ -59,7 +72,39 @@ export default function App() {
     return <div style={{ color: 'var(--text-dim)', textAlign: 'center', marginTop: 80 }}>Checking device…</div>
   }
 
-  if (deviceState === 'unenrolled') return <EnrollPage onEnrolled={() => setDeviceState('enrolled')} />
+  if (deviceState === 'unenrolled') return <EnrollPage onEnrolled={() => setDeviceState('checking')} />
+
+  if (deviceState === 'suspended' || deviceState === 'unassigned') {
+    const suspended = deviceState === 'suspended'
+    return (
+      <div style={{ padding: 24, color: '#fff', textAlign: 'center', marginTop: 80 }}>
+        <div style={{ fontSize: 22, fontWeight: 700 }}>
+          {suspended ? 'Device suspended' : 'Device registered'}
+        </div>
+        <p style={{ color: 'var(--text-dim)', fontSize: 15, marginTop: 10 }}>
+          {suspended
+            ? 'This device has been suspended by PayPulse. Please contact PayPulse to restore it.'
+            : "This device is registered but hasn't been linked to a till yet. Ask your manager to link it on the Tills page, or contact PayPulse."}
+        </p>
+        <button
+          onClick={() => setDeviceState('checking')}
+          style={{
+            marginTop: 20,
+            padding: '14px 28px',
+            background: 'var(--accent)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 10,
+            fontSize: 16,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Check again
+        </button>
+      </div>
+    )
+  }
 
   if (!decoded) return <LoginPage />
 
