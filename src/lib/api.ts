@@ -1,11 +1,38 @@
+import { getDeviceToken, type DeviceInfo, type HardwareInfo } from './device'
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  // Machine-readable reason for device refusals, e.g. "device_not_registered".
+  code?: string
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
+}
+
+// FastAPI's `detail` is a string for most errors, and an object
+// {code, message} for device refusals.
+function parseDetail(body: unknown, fallback: string): { message: string; code?: string } {
+  const detail = (body as { detail?: unknown } | null)?.detail
+  if (typeof detail === 'string') return { message: detail }
+  if (detail && typeof detail === 'object' && 'message' in detail) {
+    const d = detail as { message: string; code?: string }
+    return { message: d.message, code: d.code }
+  }
+  if (detail !== undefined) return { message: JSON.stringify(detail) }
+  return { message: fallback }
+}
+
+// Fired when the server says this device is no longer registered, so the app
+// can drop back to the enrolment screen.
+export const DEVICE_REJECTED_EVENT = 'paypulse:device-rejected'
+
+function deviceHeaders(): Record<string, string> {
+  const t = getDeviceToken()
+  return t ? { 'X-Device-Token': t } : {}
 }
 
 function getToken(): string | null {
@@ -17,20 +44,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     ...(options.body ? { 'Content-Type': 'application/json' } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...deviceHeaders(),
     ...((options.headers as Record<string, string>) ?? {}),
   }
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
 
   if (!res.ok) {
-    let detail = res.statusText
+    let parsed = { message: res.statusText } as { message: string; code?: string }
     try {
-      const body = await res.json()
-      detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+      parsed = parseDetail(await res.json(), res.statusText)
     } catch {
       // not JSON — fall back to statusText
     }
-    throw new ApiError(res.status, detail)
+    if (parsed.code === 'device_not_registered') window.dispatchEvent(new Event(DEVICE_REJECTED_EVENT))
+    throw new ApiError(res.status, parsed.message, parsed.code)
   }
 
   if (res.status === 204) return undefined as T
@@ -43,27 +71,35 @@ export async function login(username: string, password: string): Promise<string>
   const body = new URLSearchParams({ username, password })
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...deviceHeaders() },
     body,
   })
   if (!res.ok) {
-    let detail = 'Login failed'
+    let parsed: { message: string; code?: string } = { message: 'Login failed' }
     try {
-      detail = (await res.json()).detail ?? detail
+      parsed = parseDetail(await res.json(), 'Login failed')
     } catch {
       // ignore
     }
-    throw new ApiError(res.status, detail)
+    if (parsed.code === 'device_not_registered') window.dispatchEvent(new Event(DEVICE_REJECTED_EVENT))
+    throw new ApiError(res.status, parsed.message, parsed.code)
   }
   const data = await res.json()
   return data.access_token as string
 }
+
+export const changePassword = (current_password: string, new_password: string) =>
+  request<{ detail: string }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password, new_password }),
+  })
 
 export interface DecodedToken {
   sub: string
   role: string
   merchant_id: string | null
   shop_id: string | null
+  must_change_password?: boolean
   exp: number
 }
 
@@ -71,6 +107,33 @@ export function decodeToken(token: string): DecodedToken {
   const payload = token.split('.')[1]
   return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
 }
+
+// ---- Device enrolment ----
+
+export interface EnrollResponse extends DeviceInfo {
+  device_token: string
+}
+
+export async function enrollDevice(code: string, hw: HardwareInfo): Promise<EnrollResponse> {
+  const res = await fetch(`${API_BASE}/devices/enroll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, ...hw }),
+  })
+  if (!res.ok) {
+    let parsed = { message: 'Could not register this device' } as { message: string; code?: string }
+    try {
+      parsed = parseDetail(await res.json(), parsed.message)
+    } catch {
+      // ignore
+    }
+    throw new ApiError(res.status, parsed.message, parsed.code)
+  }
+  return res.json() as Promise<EnrollResponse>
+}
+
+/** Is this device still registered? Throws ApiError(401) if it was revoked. */
+export const getDeviceMe = () => request<EnrollResponse>('/devices/me')
 
 // ---- Providers (platform-wide catalog — not shop-scoped) ----
 
@@ -142,7 +205,6 @@ export interface CreateTransactionInput {
   customer_msisdn: string
   amount: string
   idempotency_key: string
-  device_id?: string
 }
 
 export const createTransaction = (input: CreateTransactionInput) =>

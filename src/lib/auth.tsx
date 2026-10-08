@@ -46,10 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY)
     setToken(null)
     setDecoded(null)
-    // Deliberately NOT clearing the paired till here — the till is a
-    // property of this physical device, not of who's currently signed in.
-    // The next teller to log in on this same phone should inherit the same
-    // pairing, not have to re-pair it.
+    // The device registration is deliberately NOT cleared here: it belongs to
+    // this physical phone, not to whoever is signed in. The next teller on
+    // the same phone just logs in.
   }
 
   return <AuthContext.Provider value={{ token, decoded, login, logout }}>{children}</AuthContext.Provider>
@@ -59,20 +58,4 @@ export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used within AuthProvider')
   return ctx
-}
-
-// ---- Till pairing (per-device, survives logout/login of different tellers) ----
-
-const TILL_STORAGE_KEY = 'paypulse_pos_till_identifier'
-
-export function getPairedTill(): string | null {
-  return localStorage.getItem(TILL_STORAGE_KEY)
-}
-
-export function setPairedTill(tillIdentifier: string) {
-  localStorage.setItem(TILL_STORAGE_KEY, tillIdentifier)
-}
-
-export function clearPairedTill() {
-  localStorage.removeItem(TILL_STORAGE_KEY)
 }

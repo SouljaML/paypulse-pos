@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { useAuth, getPairedTill } from '../lib/auth'
+import { useAuth } from '../lib/auth'
+import { getDeviceInfo } from '../lib/device'
+import { getSavedPrinter, printReceiptText, printingAvailable } from '../lib/printer'
+import { PrinterPage } from './PrinterPage'
 import { newIdempotencyKey } from '../lib/uuid'
 import {
   createTransaction,
@@ -19,7 +22,7 @@ type ViewState =
   | { mode: 'awaiting-otp'; txn: Transaction }
   | { mode: 'result'; txn: Transaction }
 
-export function TransactionPage({ onRepair }: { onRepair: () => void }) {
+export function TransactionPage() {
   const { decoded, logout } = useAuth()
   const merchantId = decoded?.merchant_id ?? null
 
@@ -41,6 +44,10 @@ export function TransactionPage({ onRepair }: { onRepair: () => void }) {
   const [confirmingOtp, setConfirmingOtp] = useState(false)
 
   const [view, setView] = useState<ViewState>({ mode: 'form' })
+  const [showPrinter, setShowPrinter] = useState(false)
+  // Provider of the transaction on screen, kept for the printed receipt
+  // (the transaction record itself only carries the provider's id).
+  const [lastProviderName, setLastProviderName] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollAttempts = useRef(0)
 
@@ -110,8 +117,8 @@ export function TransactionPage({ onRepair }: { onRepair: () => void }) {
         customer_msisdn: msisdn.trim(),
         amount: amount.trim(),
         idempotency_key: newIdempotencyKey(),
-        device_id: getPairedTill() ?? undefined,
       })
+      setLastProviderName(account.provider_name)
 
       const stillInFlight =
         txn.status === 'pending_confirmation' || txn.status === 'sent_to_provider' || txn.status === 'initiated'
@@ -158,14 +165,37 @@ export function TransactionPage({ onRepair }: { onRepair: () => void }) {
 
   async function handlePrintReceipt(txnId: string) {
     try {
+      // Issues (or re-fetches) the official receipt number first, so what is
+      // printed is always the number the server has on record.
       const res = await printReceipt(txnId)
-      window.alert(`Receipt ${res.receipt_number} printed.`)
+
+      if (!printingAvailable()) {
+        window.alert(`Receipt ${res.receipt_number} recorded. Printing works in the PayPulse Android app.`)
+        return
+      }
+      if (!getSavedPrinter()) {
+        window.alert(`Receipt ${res.receipt_number} recorded, but no printer is set up. Tap Printer at the top.`)
+        return
+      }
+      await printReceiptText({
+        shopName: device?.shop_name ?? null,
+        tillLabel: device?.till_label ?? device?.label ?? null,
+        receiptNumber: res.receipt_number,
+        providerName: lastProviderName,
+        customerMsisdn: res.transaction.customer_msisdn,
+        amount: res.transaction.amount,
+        currency: res.transaction.currency,
+        reference: res.transaction.provider_reference,
+        confirmedAt: res.transaction.confirmed_at,
+      })
     } catch (err) {
-      window.alert(err instanceof ApiError ? err.message : 'Could not print receipt.')
+      window.alert(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Could not print receipt.')
     }
   }
 
-  const pairedTill = getPairedTill()
+  const device = getDeviceInfo()
+
+  if (showPrinter) return <PrinterPage onClose={() => setShowPrinter(false)} />
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -182,16 +212,18 @@ export function TransactionPage({ onRepair }: { onRepair: () => void }) {
       >
         <div>
           <div style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>PayPulse POS</div>
-          {pairedTill && (
-            <div className="num" style={{ color: 'var(--text-dim)', fontSize: 12 }}>
-              {pairedTill}
+          {device && (
+            <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>
+              {[device.shop_name, device.till_label ?? device.label].filter(Boolean).join(' · ')}
             </div>
           )}
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <button onClick={onRepair} style={smallLinkStyle}>
-            Change till
-          </button>
+          {printingAvailable() && (
+            <button onClick={() => setShowPrinter(true)} style={smallLinkStyle}>
+              Printer
+            </button>
+          )}
           <button onClick={logout} style={smallLinkStyle}>
             Log out
           </button>
