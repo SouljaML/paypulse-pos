@@ -1,10 +1,19 @@
-// Bluetooth receipt printing (58 mm ESC/POS thermal printers).
+// Receipt printing.
 //
-// Only works inside the native app; in a browser every function reports that
-// printing isn't available. The chosen printer is remembered on the phone.
+// Two ways to print, chosen by the kind of device:
+//   - phone / tablet : a paired Bluetooth ESC/POS printer (58 mm)
+//   - POS terminal   : the printer built into the machine (vendor driver)
+//
+// Either way the receipt is drawn as a picture (see receipt.ts) and the
+// picture is what gets printed, so the slip matches the preview exactly.
 
 import { CapacitorThermalPrinter } from 'capacitor-thermal-printer'
 import { isNative } from './device'
+import { getDeviceProfile, profileLabel } from './terminal'
+import { IposPrinter } from './iposPrinter'
+import { receiptToDataUrl, type ReceiptData } from './receipt'
+
+export type { ReceiptData } from './receipt'
 
 export interface SavedPrinter {
   name: string
@@ -12,7 +21,6 @@ export interface SavedPrinter {
 }
 
 const KEY = 'paypulse_printer'
-const WIDTH = 32 // characters per line on a 58 mm roll
 
 export const printingAvailable = (): boolean => isNative()
 
@@ -33,7 +41,12 @@ export function forgetPrinter() {
   localStorage.removeItem(KEY)
 }
 
-/** Start looking for printers. Returns a function that stops the scan. */
+/** True when this device needs no Bluetooth printer set-up (built-in printer). */
+export async function hasBuiltInPrinter(): Promise<boolean> {
+  return (await getDeviceProfile()).cls === 'terminal'
+}
+
+/** Start looking for Bluetooth printers. Returns a function that stops the scan. */
 export async function scanForPrinters(
   onDevices: (devices: SavedPrinter[]) => void,
   onFinish: () => void,
@@ -66,76 +79,39 @@ async function ensureConnected(): Promise<void> {
   }
 }
 
-const rule = '-'.repeat(WIDTH) + '\n'
+// ---- drivers ---------------------------------------------------------------
 
-// ASCII only — thermal printers choke on curly quotes and similar.
-function ascii(s: string): string {
-  return s.replace(/[^\x20-\x7E]/g, '?')
+async function printPictureBluetooth(dataUrl: string): Promise<void> {
+  await ensureConnected()
+  await CapacitorThermalPrinter.begin().align('center').image(dataUrl).feedCutPaper().write()
 }
 
-function row(left: string, right: string): string {
-  const l = ascii(left)
-  const r = ascii(right)
-  const gap = Math.max(1, WIDTH - l.length - r.length)
-  return l + ' '.repeat(gap) + r + '\n'
+async function printPictureBuiltIn(dataUrl: string): Promise<void> {
+  const p = await getDeviceProfile()
+  if (p.vendor === 'ipos' || p.vendor === 'alps') {
+    await IposPrinter.printImage({ data: dataUrl, size: 16 })
+    return
+  }
+  // Other terminal makers need their own driver; add it here.
+  throw new Error(
+    `The built-in printer driver for ${profileLabel(p)} isn't installed yet. ` +
+      `Send this model name to PayPulse support.`,
+  )
 }
 
-export interface ReceiptData {
-  shopName: string | null
-  tillLabel: string | null
-  receiptNumber: string
-  providerName: string | null
-  customerMsisdn: string
-  amount: string
-  currency: string
-  reference: string | null
-  confirmedAt: string | null
+async function printPicture(dataUrl: string): Promise<void> {
+  if (await hasBuiltInPrinter()) return printPictureBuiltIn(dataUrl)
+  return printPictureBluetooth(dataUrl)
 }
 
-function maskMsisdn(m: string): string {
-  const digits = m.replace(/\D/g, '')
-  return digits.length > 4 ? '*'.repeat(digits.length - 4) + digits.slice(-4) : digits
-}
-
-function formatDate(iso: string | null): string {
-  const d = iso ? new Date(iso) : new Date()
-  return d.toLocaleString('en-GB', { timeZone: 'Africa/Maseru', dateStyle: 'short', timeStyle: 'short' })
-}
+// ---- public ----------------------------------------------------------------
 
 export async function printReceiptText(r: ReceiptData): Promise<void> {
-  await ensureConnected()
-  let job = CapacitorThermalPrinter.begin().align('center').bold().doubleWidth().text('PayPulse\n').clearFormatting()
-  if (r.shopName) job = job.text(ascii(r.shopName) + '\n')
-  if (r.tillLabel) job = job.text(ascii(r.tillLabel) + '\n')
-  job = job
-    .text(rule)
-    .align('left')
-    .text(row('Receipt', r.receiptNumber))
-    .text(row('Date', formatDate(r.confirmedAt)))
-  if (r.providerName) job = job.text(row('Provider', r.providerName))
-  job = job.text(row('Customer', maskMsisdn(r.customerMsisdn)))
-  if (r.reference) job = job.text(row('Ref', r.reference))
-  await job
-    .text(rule)
-    .bold()
-    .doubleHeight()
-    .text(row('TOTAL', `${r.currency} ${r.amount}`))
-    .clearFormatting()
-    .text(rule)
-    .align('center')
-    .text('Thank you\n\n\n')
-    .cutPaper()
-    .write()
+  await printPicture(receiptToDataUrl(r))
 }
 
 export async function printTestPage(): Promise<void> {
-  await ensureConnected()
-  await CapacitorThermalPrinter.begin()
-    .align('center')
-    .bold()
-    .text('PayPulse POS\n')
-    .clearFormatting()
-    .text('Printer test OK\n\n\n')
-    .cutPaper()
-    .write()
+  const p = await getDeviceProfile()
+  const { SAMPLE_RECEIPT } = await import('./receipt')
+  await printPicture(receiptToDataUrl({ ...SAMPLE_RECEIPT, tillLabel: `Test print - ${profileLabel(p)}` }))
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { getDeviceProfile, profileLabel, type DeviceProfile } from '../lib/terminal'
 import {
   connectPrinter,
   forgetPrinter,
@@ -16,6 +17,11 @@ export function PrinterPage({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null)
   const stopRef = useRef<null | (() => Promise<void>)>(null)
+  const [profile, setProfile] = useState<DeviceProfile | null>(null)
+
+  useEffect(() => {
+    getDeviceProfile().then(setProfile)
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -67,6 +73,31 @@ export function PrinterPage({ onClose }: { onClose: () => void }) {
     }
   }
 
+  if (profile?.cls === 'terminal') {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 24, paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 20 }}>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 20 }}>Receipt printer</div>
+          <button onClick={onClose} style={linkStyle}>
+            Done
+          </button>
+        </div>
+        <div style={{ color: 'var(--text-dim)', fontSize: 14, marginBottom: 16 }}>
+          This is a POS terminal (<strong style={{ color: '#fff' }}>{profileLabel(profile)}</strong>). It prints on its own
+          built-in printer, so there is nothing to scan or pair.
+        </div>
+        {message && (
+          <div style={{ fontSize: 14, color: `var(--status-${message.tone})`, background: `var(--status-${message.tone}-bg)`, borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
+            {message.text}
+          </div>
+        )}
+        <button onClick={handleTest} disabled={busy === 'test'} style={buttonStyle}>
+          {busy === 'test' ? 'Printing…' : 'Print sample receipt'}
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 24, paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 20 }}>
@@ -107,7 +138,7 @@ export function PrinterPage({ onClose }: { onClose: () => void }) {
         </button>
         {saved && (
           <button onClick={handleTest} disabled={busy === 'test'} style={buttonStyle}>
-            {busy === 'test' ? 'Printing…' : 'Test print'}
+            {busy === 'test' ? 'Printing…' : 'Print sample receipt'}
           </button>
         )}
       </div>

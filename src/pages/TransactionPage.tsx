@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ProviderPicker } from '../components/ProviderPicker'
 import { useAuth } from '../lib/auth'
 import { getDeviceInfo } from '../lib/device'
-import { getSavedPrinter, printReceiptText, printingAvailable } from '../lib/printer'
+import { getSavedPrinter, hasBuiltInPrinter, printReceiptText, printingAvailable } from '../lib/printer'
 import { PrinterPage } from './PrinterPage'
 import { newIdempotencyKey } from '../lib/uuid'
 import {
@@ -174,12 +174,14 @@ export function TransactionPage() {
         window.alert(`Receipt ${res.receipt_number} recorded. Printing works in the PayPulse Android app.`)
         return
       }
-      if (!getSavedPrinter()) {
+      if (!(await hasBuiltInPrinter()) && !getSavedPrinter()) {
         window.alert(`Receipt ${res.receipt_number} recorded, but no printer is set up. Tap Printer at the top.`)
         return
       }
       await printReceiptText({
+        merchantName: device?.merchant_name ?? null,
         shopName: device?.shop_name ?? null,
+        shopAddress: device?.shop_address ?? null,
         tillLabel: device?.till_label ?? device?.label ?? null,
         receiptNumber: res.receipt_number,
         providerName: lastProviderName,

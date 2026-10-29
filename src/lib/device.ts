@@ -29,6 +29,8 @@ export interface DeviceInfo {
   status?: 'active' | 'suspended' | string
   assigned?: boolean
   shop_name: string | null
+  shop_address?: string | null
+  merchant_name?: string | null
   till_id: string | null
   till_identifier: string | null
   till_label: string | null

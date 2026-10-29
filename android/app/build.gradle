@@ -3,6 +3,9 @@ apply plugin: 'com.android.application'
 android {
     namespace "com.paypulse.pos"
     compileSdk rootProject.ext.compileSdkVersion
+    buildFeatures {
+        aidl true
+    }
     defaultConfig {
         applicationId "com.paypulse.pos"
         minSdkVersion rootProject.ext.minSdkVersion

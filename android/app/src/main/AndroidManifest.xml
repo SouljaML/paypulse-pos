@@ -35,6 +35,11 @@
         </provider>
     </application>
 
+    <!-- Lets the app see the terminal's built-in printer service (Android 11+) -->
+    <queries>
+        <package android:name="com.iposprinter.iposprinterservice" />
+    </queries>
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
