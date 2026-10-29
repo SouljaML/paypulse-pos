@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ProviderPicker } from '../components/ProviderPicker'
 import { useAuth } from '../lib/auth'
 import { getDeviceInfo } from '../lib/device'
 import { getSavedPrinter, printReceiptText, printingAvailable } from '../lib/printer'
@@ -311,7 +312,7 @@ function FormView({
         style={inputStyle}
       />
 
-      <label htmlFor="txn-provider" style={{ ...labelStyle, marginTop: 18 }}>Provider</label>
+      <div style={{ ...labelStyle, marginTop: 18 }}>Provider</div>
       {!accounts ? (
         <div style={{ color: 'var(--text-dim)', fontSize: 14, padding: '12px 0' }}>Loading providers…</div>
       ) : accounts.length === 0 ? (
@@ -319,13 +320,7 @@ function FormView({
           No provider accounts set up for your shop yet.
         </div>
       ) : (
-        <select id="txn-provider" value={accountId} onChange={(e) => setAccountId(e.target.value)} style={inputStyle}>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.provider_name} — {a.account_identifier}
-            </option>
-          ))}
-        </select>
+        <ProviderPicker accounts={accounts} value={accountId} onChange={setAccountId} />
       )}
 
       <label htmlFor="txn-amount" style={{ ...labelStyle, marginTop: 18 }}>Amount (LSL)</label>

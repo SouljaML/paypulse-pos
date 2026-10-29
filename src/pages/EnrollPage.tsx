@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { enrollDevice, ApiError } from '../lib/api'
 import { readHardwareInfo, saveEnrollment } from '../lib/device'
+import { LogoMark } from '../components/Logo'
 
 export function EnrollPage({ onEnrolled }: { onEnrolled: () => void }) {
   const [code, setCode] = useState('')
@@ -36,9 +37,12 @@ export function EnrollPage({ onEnrolled }: { onEnrolled: () => void }) {
       }}
     >
       <div style={{ marginBottom: 32, textAlign: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+          <LogoMark size={72} />
+        </div>
         <div style={{ color: '#fff', fontWeight: 700, fontSize: 26 }}>Register this device</div>
         <div style={{ color: 'var(--text-dim)', fontSize: 14, marginTop: 6 }}>
-          Ask your manager to register this device in the PayPulse portal, then enter the code they get.
+          Enter the enrolment code PayPulse gave you for this device.
         </div>
       </div>
 

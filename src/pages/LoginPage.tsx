@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
+import { LogoMark } from '../components/Logo'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -37,6 +38,9 @@ export function LoginPage() {
       }}
     >
       <div style={{ marginBottom: 40, textAlign: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+          <LogoMark size={72} />
+        </div>
         <div style={{ color: '#fff', fontWeight: 700, fontSize: 26, letterSpacing: 0.2 }}>PayPulse</div>
         <div style={{ color: 'var(--text-dim)', fontSize: 14, marginTop: 2 }}>Point of sale</div>
       </div>
